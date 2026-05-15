@@ -110,6 +110,43 @@ function respawnPlayer(player) {
   player.powerup = null;
 }
 
+function getShotCooldown(player) {
+  return Math.max(80, 200 - player.skillLevels.shootSpeed * 20);
+}
+
+function getPowerupDuration(type, player) {
+  if (type === 'bazooka') {
+    return 10000 + player.skillLevels.duration * 1000;
+  }
+  if (type === 'sniper') {
+    return 15000 + player.skillLevels.duration * 1000;
+  }
+  if (type === 'shield') {
+    return 12000;
+  }
+  return 10000;
+}
+
+function dropPowerCubes(player, time) {
+  const dropCount = Math.max(1, Math.ceil(player.powerCubes * 0.5));
+  const lost = Math.min(player.powerCubes, dropCount);
+  player.powerCubes -= lost;
+  player.maxHealth = Math.max(100, player.maxHealth - lost * 15);
+  player.damageMultiplier = Math.max(1, player.damageMultiplier - lost * 0.1);
+  player.health = Math.min(player.health, player.maxHealth);
+
+  for (let c = 0; c < dropCount; c++) {
+    const angle = (Math.PI * 2 * c) / dropCount;
+    powerCubes.push({
+      x: player.x + Math.cos(angle) * 30,
+      y: player.y + Math.sin(angle) * 30,
+      vx: Math.cos(angle) * 150,
+      vy: Math.sin(angle) * 150,
+      created: time
+    });
+  }
+}
+
 function update(dt) {
   const time = Date.now();
 
@@ -154,9 +191,10 @@ function update(dt) {
         } else {
           player.powerup = {
             type: pickup.type,
-            expires: time + (pickup.type === 'bazooka' ? 10000 : pickup.type === 'shield' ? 12000 : 15000)
+            expires: time + getPowerupDuration(pickup.type, player)
           };
         }
+        player.gold += 10;
         pickup = null;
         lastPickupTime = time;
         nextPickupDelay = getPickupDelay();
@@ -176,7 +214,7 @@ function update(dt) {
       }
     }
 
-    if (player.input.shoot && time - player.lastShot > 200) {
+    if (player.input.shoot && time - player.lastShot > getShotCooldown(player)) {
       const angle = Math.atan2(player.input.aimY - player.y, player.input.aimX - player.x);
       const type = player.powerup ? player.powerup.type : 'normal';
       bullets.push({
@@ -230,24 +268,20 @@ function update(dt) {
         const dx = bullet.x - player.x;
         const dy = bullet.y - player.y;
         if (dx * dx + dy * dy <= explosionRadius * explosionRadius) {
+          const shooter = players[bullet.shooter];
           let damage = 80;
+          if (shooter) {
+            damage = Math.ceil(damage * shooter.damageMultiplier);
+          }
           if (player.powerup && player.powerup.type === 'shield') {
             damage = Math.ceil(damage * 0.55);
           }
-          damage = Math.ceil(damage * player.damageMultiplier);
           player.health -= damage;
           if (player.health <= 0) {
-            const cubeCount = Math.floor(Math.random() * 3) + 1;
-            for (let c = 0; c < cubeCount; c++) {
-              const angle = (Math.PI * 2 * c) / cubeCount;
-              powerCubes.push({
-                x: player.x + Math.cos(angle) * 30,
-                y: player.y + Math.sin(angle) * 30,
-                vx: Math.cos(angle) * 150,
-                vy: Math.sin(angle) * 150,
-                created: time
-              });
+            if (shooter) {
+              shooter.gold += 25;
             }
+            dropPowerCubes(player, time);
             respawnPlayer(player);
           }
         }
@@ -279,11 +313,15 @@ function update(dt) {
       const dx = bullet.x - player.x;
       const dy = bullet.y - player.y;
       if (dx * dx + dy * dy < (18 + bulletRadius) * (18 + bulletRadius)) {
-        let damage = Math.ceil(25 * player.damageMultiplier);
+        const shooter = players[bullet.shooter];
+        let damage = 25;
         if (bullet.type === 'bazooka') {
-          damage = Math.ceil(45 * player.damageMultiplier);
+          damage = 45;
         } else if (bullet.type === 'sniper') {
-          damage = Math.ceil((15 + Math.min(35, bullet.distance * 0.2)) * player.damageMultiplier);
+          damage = 15 + Math.min(35, bullet.distance * 0.2);
+        }
+        if (shooter) {
+          damage = Math.ceil(damage * shooter.damageMultiplier);
         }
 
         if (player.powerup && player.powerup.type === 'shield') {
@@ -293,17 +331,11 @@ function update(dt) {
         player.health -= damage;
         bullets.splice(i, 1);
         if (player.health <= 0) {
-          const cubeCount = Math.floor(Math.random() * 3) + 1;
-          for (let c = 0; c < cubeCount; c++) {
-            const angle = (Math.PI * 2 * c) / cubeCount;
-            powerCubes.push({
-              x: player.x + Math.cos(angle) * 30,
-              y: player.y + Math.sin(angle) * 30,
-              vx: Math.cos(angle) * 150,
-              vy: Math.sin(angle) * 150,
-              created: time
-            });
+          const shooter = players[bullet.shooter];
+          if (shooter) {
+            shooter.gold += 25;
           }
+          dropPowerCubes(player, time);
           respawnPlayer(player);
         }
         hit = true;
@@ -330,6 +362,12 @@ function update(dt) {
   }
 }
 
+function getSkillCost(skill, level) {
+  if (skill === 'shootSpeed') return 50 + level * 25;
+  if (skill === 'duration') return 60 + level * 30;
+  return 50;
+}
+
 function getGameState() {
   return {
     players: Object.values(players).map(p => ({
@@ -342,6 +380,8 @@ function getGameState() {
       maxHealth: p.maxHealth,
       damageMultiplier: p.damageMultiplier,
       powerCubes: p.powerCubes,
+      gold: p.gold,
+      skillLevels: p.skillLevels,
       powerup: p.powerup ? p.powerup.type : null
     })),
     bullets: bullets.map(b => {
@@ -366,6 +406,19 @@ io.on('connection', socket => {
   socket.on('input', data => {
     if (!players[socket.id]) return;
     players[socket.id].input = Object.assign(players[socket.id].input, data);
+  });
+
+  socket.on('buySkill', data => {
+    const player = players[socket.id];
+    if (!player || !data || typeof data.skill !== 'string') return;
+    const skill = data.skill;
+    if (!['shootSpeed', 'duration'].includes(skill)) return;
+    const level = player.skillLevels[skill] || 0;
+    const cost = getSkillCost(skill, level);
+    if (player.gold >= cost) {
+      player.gold -= cost;
+      player.skillLevels[skill] = level + 1;
+    }
   });
 
   socket.on('disconnect', () => {

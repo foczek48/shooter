@@ -49,23 +49,25 @@ window.addEventListener('keyup', event => {
   }
 });
 
-canvas.addEventListener('mousemove', event => {
-  const rect = canvas.getBoundingClientRect();
-  input.aimX = event.clientX - rect.left;
-  input.aimY = event.clientY - rect.top;
-});
+if (canvas) {
+  canvas.addEventListener('mousemove', event => {
+    const rect = canvas.getBoundingClientRect();
+    input.aimX = event.clientX - rect.left;
+    input.aimY = event.clientY - rect.top;
+  });
 
-canvas.addEventListener('mousedown', () => {
-  input.shoot = true;
-});
+  canvas.addEventListener('mousedown', () => {
+    input.shoot = true;
+  });
 
-canvas.addEventListener('mouseup', () => {
-  input.shoot = false;
-});
+  canvas.addEventListener('mouseup', () => {
+    input.shoot = false;
+  });
+}
 
 socket.on('connected', payload => {
   localId = payload.id;
-  statusEl.textContent = `Connected as ${localId.slice(0, 6)}`;
+  if (statusEl) statusEl.textContent = `Connected as ${localId.slice(0, 6)}`;
 });
 
 socket.on('state', payload => {
