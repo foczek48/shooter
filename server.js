@@ -19,21 +19,23 @@ app.use(express.static('public'));
 
 const players = {};
 const bullets = [];
+const powerCubes = [];
+const explosions = [];
 const walls = [
   { x: 200, y: 120, width: 400, height: 20 },
-  { x: 200, y: 360, width: 400, height: 20 },
+  { x: 200, y: 480, width: 400, height: 20 },
   { x: 120, y: 220, width: 20, height: 160 },
   { x: 660, y: 220, width: 20, height: 160 }
 ];
 let pickup = null;
 let lastPickupTime = Date.now();
-let nextPickupDelay = 8000;
+let nextPickupDelay = 3000;
 const pickupLocations = [
   { x: 320, y: 260 },
   { x: 480, y: 260 },
-  { x: 400, y: 360 }
+  { x: 400, y: 260 }
 ];
-const pickupTypes = ['heal', 'bazooka', 'sniper'];
+const pickupTypes = ['heal', 'bazooka', 'sniper', 'shield', 'tnt'];
 let lastBroadcast = Date.now();
 
 function clamp(value, min, max) {
@@ -69,7 +71,7 @@ function getSpawnPoint() {
 }
 
 function getPickupDelay() {
-  return 7000 + Math.floor(Math.random() * 5000);
+  return 3000 + Math.floor(Math.random() * 3000);
 }
 
 function spawnPickup() {
@@ -89,8 +91,11 @@ function createPlayer(id) {
     x: spawn.x,
     y: spawn.y,
     color: `hsl(${Math.floor(Math.random() * 360)}, 80%, 60%)`,
-    name: `Player ${id.slice(0, 4)}`,
+    name: `Player ${id.slice(0, 6)}`,
     health: 100,
+    maxHealth: 100,
+    damageMultiplier: 1,
+    powerCubes: 0,
     powerup: null,
     input: { up: false, down: false, left: false, right: false, aimX: 0, aimY: 0, shoot: false },
     lastShot: 0
@@ -101,7 +106,7 @@ function respawnPlayer(player) {
   const spawn = getSpawnPoint();
   player.x = spawn.x;
   player.y = spawn.y;
-  player.health = 100;
+  player.health = player.maxHealth;
   player.powerup = null;
 }
 
@@ -145,16 +150,29 @@ function update(dt) {
       const dyPickup = player.y - pickup.y;
       if (dxPickup * dxPickup + dyPickup * dyPickup < (18 + 12) * (18 + 12)) {
         if (pickup.type === 'heal') {
-          player.health = Math.min(100, player.health + 40);
+          player.health = Math.min(player.maxHealth, player.health + 40);
         } else {
           player.powerup = {
             type: pickup.type,
-            expires: time + (pickup.type === 'bazooka' ? 10000 : 15000)
+            expires: time + (pickup.type === 'bazooka' ? 10000 : pickup.type === 'shield' ? 12000 : 15000)
           };
         }
         pickup = null;
         lastPickupTime = time;
         nextPickupDelay = getPickupDelay();
+      }
+    }
+
+    for (let i = powerCubes.length - 1; i >= 0; i--) {
+      const cube = powerCubes[i];
+      const dxCube = player.x - cube.x;
+      const dyCube = player.y - cube.y;
+      if (dxCube * dxCube + dyCube * dyCube < (18 + 8) * (18 + 8)) {
+        player.maxHealth += 15;
+        player.health = Math.min(player.health + 15, player.maxHealth);
+        player.damageMultiplier += 0.1;
+        player.powerCubes += 1;
+        powerCubes.splice(i, 1);
       }
     }
 
@@ -164,12 +182,18 @@ function update(dt) {
       bullets.push({
         x: player.x,
         y: player.y,
+        startX: player.x,
+        startY: player.y,
         vx: Math.cos(angle) * BULLET_SPEED,
         vy: Math.sin(angle) * BULLET_SPEED,
         shooter: player.id,
         type,
-        created: time
+        created: time,
+        explodeAt: type === 'tnt' ? time + 2000 : null
       });
+      if (type === 'tnt') {
+        player.powerup = null;
+      }
       player.lastShot = time;
     }
   });
@@ -182,16 +206,65 @@ function update(dt) {
     const bullet = bullets[i];
     bullet.x += bullet.vx * dt;
     bullet.y += bullet.vy * dt;
+    bullet.distance = Math.sqrt((bullet.x - bullet.startX) * (bullet.x - bullet.startX) + (bullet.y - bullet.startY) * (bullet.y - bullet.startY));
 
     if (Date.now() - bullet.created > BULLET_LIFETIME || bullet.x < -50 || bullet.x > 850 || bullet.y < -50 || bullet.y > 650) {
       bullets.splice(i, 1);
       continue;
     }
 
+    const getBulletRadius = (bullet) => {
+      if (bullet.type === 'bazooka') return 10;
+      if (bullet.type === 'sniper') return 5 + Math.min(10, bullet.distance * 0.03);
+      if (bullet.type === 'tnt') return 8;
+      return 5;
+    };
+
+    const bulletRadius = getBulletRadius(bullet);
+
+    if (bullet.type === 'tnt' && bullet.explodeAt && time >= bullet.explodeAt) {
+      const explosionRadius = 80;
+      explosions.push({ x: bullet.x, y: bullet.y, radius: explosionRadius, created: time });
+      for (const player of Object.values(players)) {
+        if (player.id === bullet.shooter) continue;
+        const dx = bullet.x - player.x;
+        const dy = bullet.y - player.y;
+        if (dx * dx + dy * dy <= explosionRadius * explosionRadius) {
+          let damage = 80;
+          if (player.powerup && player.powerup.type === 'shield') {
+            damage = Math.ceil(damage * 0.55);
+          }
+          damage = Math.ceil(damage * player.damageMultiplier);
+          player.health -= damage;
+          if (player.health <= 0) {
+            const cubeCount = Math.floor(Math.random() * 3) + 1;
+            for (let c = 0; c < cubeCount; c++) {
+              const angle = (Math.PI * 2 * c) / cubeCount;
+              powerCubes.push({
+                x: player.x + Math.cos(angle) * 30,
+                y: player.y + Math.sin(angle) * 30,
+                vx: Math.cos(angle) * 150,
+                vy: Math.sin(angle) * 150,
+                created: time
+              });
+            }
+            respawnPlayer(player);
+          }
+        }
+      }
+      bullets.splice(i, 1);
+      continue;
+    }
+
     let hit = false;
     for (const wall of walls) {
-      if (circleRectOverlap(bullet.x, bullet.y, 5, wall)) {
-        hit = true;
+      if (circleRectOverlap(bullet.x, bullet.y, bulletRadius, wall)) {
+        if (bullet.type === 'tnt') {
+          bullet.vx = 0;
+          bullet.vy = 0;
+        } else {
+          hit = true;
+        }
         break;
       }
     }
@@ -205,22 +278,54 @@ function update(dt) {
       if (player.id === bullet.shooter) continue;
       const dx = bullet.x - player.x;
       const dy = bullet.y - player.y;
-      if (dx * dx + dy * dy < (18 + 5) * (18 + 5)) {
-        let damage = 25;
+      if (dx * dx + dy * dy < (18 + bulletRadius) * (18 + bulletRadius)) {
+        let damage = Math.ceil(25 * player.damageMultiplier);
         if (bullet.type === 'bazooka') {
-          damage = 45;
+          damage = Math.ceil(45 * player.damageMultiplier);
         } else if (bullet.type === 'sniper') {
-          const distance = Math.sqrt(dx * dx + dy * dy);
-          damage = 15 + Math.min(35, distance * 0.2);
+          damage = Math.ceil((15 + Math.min(35, bullet.distance * 0.2)) * player.damageMultiplier);
         }
+
+        if (player.powerup && player.powerup.type === 'shield') {
+          damage = Math.ceil(damage * 0.55);
+        }
+
         player.health -= damage;
         bullets.splice(i, 1);
         if (player.health <= 0) {
+          const cubeCount = Math.floor(Math.random() * 3) + 1;
+          for (let c = 0; c < cubeCount; c++) {
+            const angle = (Math.PI * 2 * c) / cubeCount;
+            powerCubes.push({
+              x: player.x + Math.cos(angle) * 30,
+              y: player.y + Math.sin(angle) * 30,
+              vx: Math.cos(angle) * 150,
+              vy: Math.sin(angle) * 150,
+              created: time
+            });
+          }
           respawnPlayer(player);
         }
         hit = true;
         break;
       }
+    }
+  }
+
+  for (let i = powerCubes.length - 1; i >= 0; i--) {
+    const cube = powerCubes[i];
+    cube.x += cube.vx * dt;
+    cube.y += cube.vy * dt;
+    cube.vx *= 0.98;
+    cube.vy *= 0.98;
+    if (time - cube.created > 30000) {
+      powerCubes.splice(i, 1);
+    }
+  }
+
+  for (let i = explosions.length - 1; i >= 0; i--) {
+    if (time - explosions[i].created > 600) {
+      explosions.splice(i, 1);
     }
   }
 }
@@ -234,9 +339,18 @@ function getGameState() {
       color: p.color,
       name: p.name,
       health: p.health,
+      maxHealth: p.maxHealth,
+      damageMultiplier: p.damageMultiplier,
+      powerCubes: p.powerCubes,
       powerup: p.powerup ? p.powerup.type : null
     })),
-    bullets: bullets.map(b => ({ x: b.x, y: b.y, type: b.type })),
+    bullets: bullets.map(b => {
+      const distance = b.distance || 0;
+      const radius = b.type === 'bazooka' ? 10 : b.type === 'sniper' ? 5 + Math.min(10, distance * 0.03) : b.type === 'tnt' ? 8 : 5;
+      return { x: b.x, y: b.y, type: b.type, radius };
+    }),
+    powerCubes: powerCubes.map(c => ({ x: c.x, y: c.y })),
+    explosions,
     walls,
     pickup
   };

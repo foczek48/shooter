@@ -3,7 +3,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 
-const state = { players: [], bullets: [], walls: [], pickup: null };
+const state = { players: [], bullets: [], explosions: [], powerCubes: [], walls: [], pickup: null };
 const input = { up: false, down: false, left: false, right: false, aimX: 400, aimY: 300, shoot: false };
 let localId = null;
 
@@ -71,6 +71,8 @@ socket.on('connected', payload => {
 socket.on('state', payload => {
   state.players = payload.players;
   state.bullets = payload.bullets;
+  state.explosions = payload.explosions || [];
+  state.powerCubes = payload.powerCubes || [];
   state.walls = payload.walls || [];
   state.pickup = payload.pickup || null;
 });
@@ -101,17 +103,58 @@ function draw() {
       ctx.fillStyle = '#f97316';
     } else if (bullet.type === 'sniper') {
       ctx.fillStyle = '#60a5fa';
+    } else if (bullet.type === 'tnt') {
+      ctx.fillStyle = '#dc2626';
     } else {
       ctx.fillStyle = '#ffd966';
     }
+    const radius = bullet.radius || 5;
     ctx.beginPath();
-    ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
+    ctx.arc(bullet.x, bullet.y, radius, 0, Math.PI * 2);
     ctx.fill();
   });
 
+  state.explosions.forEach(explosion => {
+    ctx.fillStyle = 'rgba(248, 113, 113, 0.35)';
+    ctx.beginPath();
+    ctx.arc(explosion.x, explosion.y, explosion.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(248, 113, 113, 0.85)';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  });
+
+  state.powerCubes.forEach(cube => {
+    ctx.fillStyle = '#fbbf24';
+    ctx.fillRect(cube.x - 8, cube.y - 8, 16, 16);
+    ctx.strokeStyle = '#d97706';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(cube.x - 8, cube.y - 8, 16, 16);
+  });
+
   if (state.pickup) {
-    const label = state.pickup.type === 'heal' ? '+' : state.pickup.type === 'bazooka' ? 'B' : 'S';
-    const color = state.pickup.type === 'heal' ? '#34d399' : state.pickup.type === 'bazooka' ? '#f59e0b' : '#60a5fa';
+    const label = state.pickup.type === 'heal'
+      ? '+'
+      : state.pickup.type === 'bazooka'
+      ? 'B'
+      : state.pickup.type === 'sniper'
+      ? 'S'
+      : state.pickup.type === 'shield'
+      ? 'SH'
+      : state.pickup.type === 'tnt'
+      ? 'T'
+      : '?';
+    const color = state.pickup.type === 'heal'
+      ? '#34d399'
+      : state.pickup.type === 'bazooka'
+      ? '#f59e0b'
+      : state.pickup.type === 'sniper'
+      ? '#60a5fa'
+      : state.pickup.type === 'shield'
+      ? '#a78bfa'
+      : state.pickup.type === 'tnt'
+      ? '#ef4444'
+      : '#a78bfa';
     ctx.fillStyle = color;
     ctx.beginPath();
     ctx.arc(state.pickup.x, state.pickup.y, 14, 0, Math.PI * 2);
@@ -131,10 +174,17 @@ function draw() {
     ctx.fillStyle = '#111';
     ctx.fillRect(barX, barY, barWidth, barHeight);
     ctx.fillStyle = '#ef4444';
-    ctx.fillRect(barX, barY, (barWidth * player.health) / 100, barHeight);
+    ctx.fillRect(barX, barY, (barWidth * player.health) / player.maxHealth, barHeight);
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 1;
     ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+    if (player.powerCubes > 0) {
+      ctx.fillStyle = '#fbbf24';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(player.powerCubes, player.x, player.y - 42);
+    }
 
     ctx.fillStyle = player.color;
     ctx.beginPath();
@@ -162,10 +212,19 @@ function draw() {
     ctx.fillStyle = '#fff';
     ctx.font = '16px sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(`Health: ${local.health}`, 16, 24);
+    ctx.fillText(`Health: ${local.health}/${local.maxHealth}`, 16, 24);
+    ctx.fillText(`Cubes: ${local.powerCubes}`, 16, 46);
     if (local.powerup) {
-      const display = local.powerup === 'heal' ? 'Heal' : local.powerup === 'bazooka' ? 'Bazooka' : 'Sniper';
-      ctx.fillText(`Power: ${display}`, 16, 46);
+      const display = local.powerup === 'heal'
+        ? 'Heal'
+        : local.powerup === 'bazooka'
+        ? 'Bazooka'
+        : local.powerup === 'shield'
+        ? 'Shield'
+        : local.powerup === 'tnt'
+        ? 'TNT'
+        : 'Sniper';
+      ctx.fillText(`Power: ${display}`, 16, 68);
     }
   }
 

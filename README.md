@@ -34,16 +34,11 @@ Simple starter pack for a 2D multiplayer shooter using Node.js + Socket.IO.
  - `HP+` restores health instantly
  - `Bazooka` lets you deal extra damage for 10 seconds
  - `Sniper` makes long-range shots stronger for 15 seconds
+ - `Shield` gives you a temporary shield that absorbs one hit
+ - `TNT` creates a delayed explosion that can damage multiple players
 
-## Deployment on Render
+## License
+**MIT License**
+See LICENSE file for details.
 
-1. Create a new `Web Service` on Render
-2. Point it to this repository
-3. Set `Build Command` to `npm install`
-4. Set `Start Command` to `npm start`
-5. Render will set the `PORT` automatically
-
-## Customization
-
-- Add collision, player health, teleporters, power-ups, and maps
-- Switch rendering to Phaser if you want a more advanced frontend
+v0.5.1 alpha
