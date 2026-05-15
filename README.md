@@ -38,7 +38,7 @@ Simple starter pack for a 2D multiplayer shooter using Node.js + Socket.IO.
  - `TNT` creates a delayed explosion that can damage multiple players
 
 ## License
-**MIT License**
+**MIT License**  
 See LICENSE file for details.
 
 v0.5.1 alpha
