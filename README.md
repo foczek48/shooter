@@ -23,6 +23,18 @@ Simple starter pack for a 2D multiplayer shooter using Node.js + Socket.IO.
 - `Click` — shoot
 - `Mouse` — aim
 
+## Gameplay
+
+- Players can hit each other with bullets
+- Each player has a health bar
+- Hitting a wall blocks bullets and movement
+- Players spawn in one of the four map corners
+- When health drops to zero, the player respawns in a corner with full health
+ - Random pickups appear near the center of the map
+ - `HP+` restores health instantly
+ - `Bazooka` lets you deal extra damage for 10 seconds
+ - `Sniper` makes long-range shots stronger for 15 seconds
+
 ## Deployment on Render
 
 1. Create a new `Web Service` on Render

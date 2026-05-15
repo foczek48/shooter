@@ -3,7 +3,7 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
 
-const state = { players: [], bullets: [] };
+const state = { players: [], bullets: [], walls: [], pickup: null };
 const input = { up: false, down: false, left: false, right: false, aimX: 400, aimY: 300, shoot: false };
 let localId = null;
 
@@ -71,6 +71,8 @@ socket.on('connected', payload => {
 socket.on('state', payload => {
   state.players = payload.players;
   state.bullets = payload.bullets;
+  state.walls = payload.walls || [];
+  state.pickup = payload.pickup || null;
 });
 
 socket.on('playerJoined', () => {
@@ -86,14 +88,54 @@ function draw() {
   ctx.fillStyle = '#111';
   ctx.fillRect(0, 0, 800, 600);
 
+  state.walls.forEach(wall => {
+    ctx.fillStyle = '#334155';
+    ctx.fillRect(wall.x, wall.y, wall.width, wall.height);
+    ctx.strokeStyle = '#64748b';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(wall.x, wall.y, wall.width, wall.height);
+  });
+
   state.bullets.forEach(bullet => {
-    ctx.fillStyle = '#ffd966';
+    if (bullet.type === 'bazooka') {
+      ctx.fillStyle = '#f97316';
+    } else if (bullet.type === 'sniper') {
+      ctx.fillStyle = '#60a5fa';
+    } else {
+      ctx.fillStyle = '#ffd966';
+    }
     ctx.beginPath();
     ctx.arc(bullet.x, bullet.y, 5, 0, Math.PI * 2);
     ctx.fill();
   });
 
+  if (state.pickup) {
+    const label = state.pickup.type === 'heal' ? '+' : state.pickup.type === 'bazooka' ? 'B' : 'S';
+    const color = state.pickup.type === 'heal' ? '#34d399' : state.pickup.type === 'bazooka' ? '#f59e0b' : '#60a5fa';
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(state.pickup.x, state.pickup.y, 14, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#111827';
+    ctx.font = '18px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, state.pickup.x, state.pickup.y + 6);
+  }
+
   state.players.forEach(player => {
+    const barWidth = 36;
+    const barHeight = 6;
+    const barX = player.x - barWidth / 2;
+    const barY = player.y - 34;
+
+    ctx.fillStyle = '#111';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillRect(barX, barY, (barWidth * player.health) / 100, barHeight);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barWidth, barHeight);
+
     ctx.fillStyle = player.color;
     ctx.beginPath();
     ctx.arc(player.x, player.y, 18, 0, Math.PI * 2);
@@ -104,7 +146,7 @@ function draw() {
     ctx.fillStyle = '#fff';
     ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(player.name, player.x, player.y - 28);
+    ctx.fillText(player.name, player.x, player.y - 48);
 
     if (player.id === localId) {
       ctx.strokeStyle = '#fff';
@@ -114,6 +156,18 @@ function draw() {
       ctx.stroke();
     }
   });
+
+  const local = state.players.find(p => p.id === localId);
+  if (local) {
+    ctx.fillStyle = '#fff';
+    ctx.font = '16px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(`Health: ${local.health}`, 16, 24);
+    if (local.powerup) {
+      const display = local.powerup === 'heal' ? 'Heal' : local.powerup === 'bazooka' ? 'Bazooka' : 'Sniper';
+      ctx.fillText(`Power: ${display}`, 16, 46);
+    }
+  }
 
   requestAnimationFrame(draw);
 }
