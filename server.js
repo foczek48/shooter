@@ -97,6 +97,8 @@ function createPlayer(id) {
     damageMultiplier: 1,
     powerCubes: 0,
     powerup: null,
+    gold: 0,
+    skillLevels: { shootSpeed: 0, duration: 0 },
     input: { up: false, down: false, left: false, right: false, aimX: 0, aimY: 0, shoot: false },
     lastShot: 0
   };
