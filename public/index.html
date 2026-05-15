@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Shooter 2D</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="topbar">
+    <div>Move: WASD / Arrows · Shoot: Click · Aim: Mouse</div>
+    <div id="status">Connecting...</div>
+  </div>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <div class="footer">Open another tab to test multiplayer.</div>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
