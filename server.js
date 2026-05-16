@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
@@ -9,6 +10,7 @@ const io = new Server(server, {
 });
 
 const PORT = process.env.PORT || 3000;
+const MAX_PLAYERS = parseInt(process.env.MAX_PLAYERS, 10) || 8;
 const TICK_RATE = 60;
 const BROADCAST_RATE = 1000 / 20;
 const PLAYER_SPEED = 240;
@@ -50,6 +52,15 @@ function circleRectOverlap(cx, cy, radius, rect) {
   const dx = cx - closestX;
   const dy = cy - closestY;
   return dx * dx + dy * dy <= radius * radius;
+}
+
+function emitEventLog(message) {
+  io.emit('eventLog', { message });
+}
+
+function setPlayerEmote(player, emoji, text, time) {
+  player.emote = { emoji, expires: time + 2200 };
+  emitEventLog(`${player.name} ${text}`);
 }
 
 function reflectCircleVelocityFromRect(body, rect, radius) {
@@ -140,7 +151,8 @@ function createPlayer(id) {
     powerCubes: 0,
     powerup: null,
     input: { up: false, down: false, left: false, right: false, aimX: 0, aimY: 0, shoot: false },
-    lastShot: 0
+    lastShot: 0,
+    emote: null
   };
 }
 
@@ -178,6 +190,9 @@ function update(dt) {
   Object.values(players).forEach(player => {
     if (player.powerup && player.powerup.expires <= time) {
       player.powerup = null;
+    }
+    if (player.emote && player.emote.expires <= time) {
+      player.emote = null;
     }
   });
 
@@ -222,19 +237,6 @@ function update(dt) {
         pickup = null;
         lastPickupTime = time;
         nextPickupDelay = getPickupDelay();
-      }
-    }
-
-    for (let i = powerCubes.length - 1; i >= 0; i--) {
-      const cube = powerCubes[i];
-      const dxCube = player.x - cube.x;
-      const dyCube = player.y - cube.y;
-      if (dxCube * dxCube + dyCube * dyCube < (18 + 8) * (18 + 8)) {
-        player.maxHealth += 15;
-        player.health = Math.min(player.health + 15, player.maxHealth);
-        player.damageMultiplier += 0.1;
-        player.powerCubes += 1;
-        powerCubes.splice(i, 1);
       }
     }
 
@@ -410,8 +412,11 @@ function getGameState() {
       maxHealth: p.maxHealth,
       damageMultiplier: p.damageMultiplier,
       powerCubes: p.powerCubes,
-      powerup: p.powerup ? p.powerup.type : null
+      powerup: p.powerup ? p.powerup.type : null,
+      emote: p.emote ? p.emote.emoji : null
     })),
+    playerCount: Object.keys(players).length,
+    maxPlayers: MAX_PLAYERS,
     bullets: bullets.map(b => {
       const distance = b.distance || 0;
       const radius = b.type === 'bazooka' ? 10 : b.type === 'sniper' ? 5 + Math.min(10, distance * 0.03) : b.type === 'tnt' ? 8 : 5;
@@ -425,18 +430,38 @@ function getGameState() {
 }
 
 io.on('connection', socket => {
+  if (Object.keys(players).length >= MAX_PLAYERS) {
+    socket.emit('serverFull', { message: `Server is full (${MAX_PLAYERS} players max).` });
+    socket.disconnect(true);
+    return;
+  }
+
   const player = createPlayer(socket.id);
   players[socket.id] = player;
 
   socket.emit('connected', { id: socket.id });
   socket.broadcast.emit('playerJoined', { id: socket.id, player: { x: player.x, y: player.y, color: player.color, name: player.name } });
+  emitEventLog(`Player ${player.name} joined`);
 
   socket.on('input', data => {
     if (!players[socket.id]) return;
     players[socket.id].input = Object.assign(players[socket.id].input, data);
   });
 
+  socket.on('setEmote', payload => {
+    const player = players[socket.id];
+    if (!player || !payload || typeof payload.emoji !== 'string') return;
+    const emoji = payload.emoji.trim().slice(0, 4);
+    const now = Date.now();
+    const text = payload.text && typeof payload.text === 'string' ? payload.text : 'chose an emote';
+    setPlayerEmote(player, emoji, text, now);
+  });
+
   socket.on('disconnect', () => {
+    const player = players[socket.id];
+    if (player) {
+      emitEventLog(`Player ${player.name} disconnected`);
+    }
     delete players[socket.id];
     io.emit('playerLeft', { id: socket.id });
   });

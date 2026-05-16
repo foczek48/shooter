@@ -8,11 +8,26 @@
 </head>
 <body>
   <div class="topbar">
-    <div>Move: WASD / Arrows · Shoot: Click · Aim: Mouse</div>
-    <div id="status">Connecting...</div>
+    <div class="topbar-left">Move: WASD / Arrows · Shoot: Click · Aim: Mouse</div>
+    <div class="topbar-right">
+      <div id="status">Connecting...</div>
+      <div id="serverStatus">Connecting...</div>
+      <div id="occupancy">0/0 players</div>
+    </div>
   </div>
   <canvas id="gameCanvas" width="800" height="600"></canvas>
-  <div class="footer">v0.7.1 alpha</div>
+  <div class="event-panel">
+    <div class="event-panel-title">Server Events</div>
+    <ul id="eventLog"></ul>
+    <div class="emotes">
+      <button class="emote-button" data-emote="😀" data-log-data="is happy">😀</button>
+      <button class="emote-button" data-emote="😂" data-log-data="laughs">😂</button>
+      <button class="emote-button" data-emote="😎" data-log-data="is cool">😎</button>
+      <button class="emote-button" data-emote="❤️" data-log-data="likes this">❤️</button>
+      <button class="emote-button" data-emote="🔥" data-log-data="is on fire">🔥</button>
+    </div>
+  </div>
+  <div class="footer">v0.8.1 beta</div>
   <script src="/socket.io/socket.io.js"></script>
   <script src="main.js"></script>
 </body>

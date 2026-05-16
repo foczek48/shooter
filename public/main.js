@@ -2,6 +2,9 @@ const socket = io();
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 const statusEl = document.getElementById('status');
+const serverStatusEl = document.getElementById('serverStatus');
+const occupancyEl = document.getElementById('occupancy');
+const eventLogEl = document.getElementById('eventLog');
 
 const state = { players: [], bullets: [], explosions: [], powerCubes: [], walls: [], pickup: null };
 const input = { up: false, down: false, left: false, right: false, aimX: 400, aimY: 300, shoot: false };
@@ -11,6 +14,20 @@ function sendInput() {
   socket.emit('input', input);
 }
 
+function sendEmote(emoji, logText) {
+  socket.emit('setEmote', { emoji, text: logText });
+  statusEl.textContent = `Selected emote ${emoji}`;
+  const localPlayer = state.players.find(p => p.id === localId);
+  if (localPlayer) {
+    addEventLog(`Player ${localPlayer.name} ${logText}`);
+  }
+}
+
+const emoteButtons = document.querySelectorAll('.emote-button');
+emoteButtons.forEach(button => {
+  button.addEventListener('click', () => sendEmote(button.dataset.emote, button.dataset.logData));
+});
+
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
   canvas.width = 800 * ratio;
@@ -18,6 +35,16 @@ function resizeCanvas() {
   canvas.style.width = '800px';
   canvas.style.height = '600px';
   ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+}
+
+function addEventLog(message) {
+  if (!eventLogEl) return;
+  const item = document.createElement('li');
+  item.textContent = message;
+  eventLogEl.prepend(item);
+  while (eventLogEl.children.length > 8) {
+    eventLogEl.removeChild(eventLogEl.lastChild);
+  }
 }
 
 window.addEventListener('resize', resizeCanvas);
@@ -66,6 +93,8 @@ canvas.addEventListener('mouseup', () => {
 socket.on('connected', payload => {
   localId = payload.id;
   statusEl.textContent = `Connected as ${localId.slice(0, 6)}`;
+  serverStatusEl.textContent = 'Connected';
+  addEventLog(`Connected as ${localId.slice(0, 6)}`);
 });
 
 socket.on('state', payload => {
@@ -75,14 +104,46 @@ socket.on('state', payload => {
   state.powerCubes = payload.powerCubes || [];
   state.walls = payload.walls || [];
   state.pickup = payload.pickup || null;
+  occupancyEl.textContent = `${payload.playerCount}/${payload.maxPlayers} players`;
 });
 
-socket.on('playerJoined', () => {
-  statusEl.textContent = `Player joined`;
+socket.on('eventLog', payload => {
+  if (payload && payload.message) addEventLog(payload.message);
 });
 
-socket.on('playerLeft', () => {
-  statusEl.textContent = `Player left`;
+socket.on('playerJoined', payload => {
+  if (payload && payload.player) {
+    addEventLog(`Player ${payload.player.name} joined`);
+  }
+  statusEl.textContent = 'Player joined';
+});
+
+socket.on('playerLeft', payload => {
+  if (payload && payload.id) {
+    addEventLog(`Player left`);
+  }
+  statusEl.textContent = 'Player left';
+});
+
+socket.on('serverFull', payload => {
+  serverStatusEl.textContent = 'Server is full';
+  statusEl.textContent = payload && payload.message ? payload.message : 'Server full';
+  addEventLog('Server is full. Retrying...');
+});
+
+socket.on('connect_error', err => {
+  serverStatusEl.textContent = 'Connection error';
+  statusEl.textContent = err.message || 'Connection error';
+  addEventLog(`Connection error: ${err.message || 'no details'}`);
+});
+
+socket.on('reconnect_attempt', () => {
+  serverStatusEl.textContent = 'Reconnecting...';
+});
+
+socket.on('reconnect', attempt => {
+  serverStatusEl.textContent = 'Connected';
+  addEventLog(`Reconnected after ${attempt} attempts`);
 });
 
 function draw() {
@@ -197,6 +258,11 @@ function draw() {
     ctx.font = '14px sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(player.name, player.x, player.y - 48);
+
+    if (player.emote) {
+      ctx.font = '24px sans-serif';
+      ctx.fillText(player.emote, player.x, player.y - 70);
+    }
 
     if (player.id === localId) {
       ctx.strokeStyle = '#fff';
