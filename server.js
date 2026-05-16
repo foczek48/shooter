@@ -24,6 +24,11 @@ app.use(express.static('public'));
 const players = {};
 const bullets = [];
 const powerCubes = [];
+const npcs = [];
+let nextNpcId = 1;
+const NPC_SPAWN_INTERVAL = 60000; // 1 minute
+const NPC_BOSS_LIFETIME = 60000 * 2; // boss lives 2 minutes unless killed
+const NPC_HEALTH = 150;
 const explosions = [];
 const walls = [
   { x: 200, y: 120, width: 400, height: 20 },
@@ -184,6 +189,34 @@ function dropPowerCubes(player, time) {
   }
 }
 
+function spawnNPC(type = 'monster', x = null, y = null) {
+  const id = nextNpcId++;
+  const spawn = { x: x !== null ? x : getSpawnPoint().x, y: y !== null ? y : getSpawnPoint().y };
+  const npc = {
+    id,
+    x: spawn.x,
+    y: spawn.y,
+    vx: 0,
+    vy: 0,
+    type, // 'monster' or 'boss'
+    health: type === 'boss' ? NPC_HEALTH * 4 : NPC_HEALTH,
+    lastShot: 0,
+    created: Date.now()
+  };
+  npcs.push(npc);
+  emitEventLog(type === 'boss' ? `Boss spawned` : `Monster spawned`);
+  return npc;
+}
+
+function spawnMonstersAndBoss() {
+  // spawn monsters at spawn points
+  for (const sp of spawnPoints) {
+    spawnNPC('monster', sp.x, sp.y);
+  }
+  // spawn boss at center
+  spawnNPC('boss', WORLD_WIDTH / 2, WORLD_HEIGHT / 2);
+}
+
 function update(dt) {
   const time = Date.now();
 
@@ -279,6 +312,63 @@ function update(dt) {
     spawnPickup();
   }
 
+  // NPC AI: movement and shooting
+  for (let ni = npcs.length - 1; ni >= 0; ni--) {
+    const npc = npcs[ni];
+    // simple lifetime removal for bosses
+    if (npc.type === 'boss' && time - npc.created > NPC_BOSS_LIFETIME) {
+      emitEventLog('Boss despawned');
+      npcs.splice(ni, 1);
+      continue;
+    }
+
+    // find nearest player
+    let target = null;
+    let bestDist = Infinity;
+    for (const p of Object.values(players)) {
+      const dx = p.x - npc.x;
+      const dy = p.y - npc.y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDist) {
+        bestDist = d2;
+        target = p;
+      }
+    }
+
+    // simple movement: move toward target a bit
+    if (target) {
+      const dist = Math.sqrt(bestDist) || 1;
+      const tx = (target.x - npc.x) / dist;
+      const ty = (target.y - npc.y) / dist;
+      const speed = npc.type === 'boss' ? 80 : 60;
+      npc.x += tx * speed * dt;
+      npc.y += ty * speed * dt;
+    }
+
+    // shooting
+    if (target && time - npc.lastShot > (npc.type === 'boss' ? 900 : 1200)) {
+      const angle = Math.atan2(target.y - npc.y, target.x - npc.x);
+      // boss can use all bullet types
+      const types = npc.type === 'boss' ? ['normal', 'bazooka', 'sniper', 'tnt'] : ['normal'];
+      const btype = types[Math.floor(Math.random() * types.length)];
+      const b = {
+        x: npc.x,
+        y: npc.y,
+        startX: npc.x,
+        startY: npc.y,
+        vx: Math.cos(angle) * BULLET_SPEED,
+        vy: Math.sin(angle) * BULLET_SPEED,
+        shooter: `npc-${npc.id}`,
+        type: btype,
+        created: time,
+        explodeAt: btype === 'tnt' ? time + 2000 : null
+      };
+      if (npc.type === 'boss') b.npcMultiplier = 10;
+      bullets.push(b);
+      npc.lastShot = time;
+    }
+  }
+
   const getBulletRadius = (bullet) => {
     if (bullet.type === 'bazooka') return 10;
     if (bullet.type === 'sniper') return 5 + Math.min(10, bullet.distance * 0.03);
@@ -308,7 +398,7 @@ function update(dt) {
     if (bullet.type === 'tnt' && bullet.explodeAt && time >= bullet.explodeAt) {
       const explosionRadius = 80;
       explosions.push({ x: bullet.x, y: bullet.y, radius: explosionRadius, created: time });
-      for (const player of Object.values(players)) {
+        for (const player of Object.values(players)) {
         if (player.id === bullet.shooter) continue;
         const dx = bullet.x - player.x;
         const dy = bullet.y - player.y;
@@ -328,6 +418,21 @@ function update(dt) {
           }
         }
       }
+        // also affect NPCs
+        for (let ni = npcs.length - 1; ni >= 0; ni--) {
+          const npc = npcs[ni];
+          const dx = bullet.x - npc.x;
+          const dy = bullet.y - npc.y;
+          if (dx * dx + dy * dy <= explosionRadius * explosionRadius) {
+            let damage = 80;
+            if (bullet.npcMultiplier) damage = Math.ceil(damage * bullet.npcMultiplier);
+            npc.health -= damage;
+            if (npc.health <= 0) {
+              emitEventLog(`${npc.type === 'boss' ? 'Boss' : 'Monster'} defeated`);
+              npcs.splice(ni, 1);
+            }
+          }
+        }
       bullets.splice(i, 1);
       continue;
     }
@@ -352,6 +457,31 @@ function update(dt) {
       bullets.splice(i, 1);
       continue;
     }
+
+    // NPC hit check
+    for (let ni = 0; ni < npcs.length; ni++) {
+      const npc = npcs[ni];
+      // avoid friendly fire from the same npc
+      if (bullet.shooter === `npc-${npc.id}`) continue;
+      const dxn = bullet.x - npc.x;
+      const dyn = bullet.y - npc.y;
+      if (dxn * dxn + dyn * dyn < (18 + bulletRadius) * (18 + bulletRadius)) {
+        let damage = 25;
+        if (bullet.type === 'bazooka') damage = 45;
+        else if (bullet.type === 'sniper') damage = 15 + Math.min(35, bullet.distance * 0.2);
+        if (bullet.npcMultiplier) damage = Math.ceil(damage * bullet.npcMultiplier);
+        npc.health -= damage;
+        bullets.splice(i, 1);
+        if (npc.health <= 0) {
+          emitEventLog(`${npc.type === 'boss' ? 'Boss' : 'Monster'} defeated`);
+          // remove npc
+          npcs.splice(ni, 1);
+        }
+        hit = true;
+        break;
+      }
+    }
+    if (hit) continue;
 
     for (const player of Object.values(players)) {
       if (player.id === bullet.shooter) continue;
@@ -436,6 +566,7 @@ function getGameState() {
       return { x: b.x, y: b.y, type: b.type, radius };
     }),
     powerCubes: powerCubes.map(c => ({ x: c.x, y: c.y })),
+    npcs: npcs.map(n => ({ id: n.id, x: n.x, y: n.y, type: n.type, health: n.health })),
     explosions,
     walls,
     pickup
@@ -490,6 +621,10 @@ io.on('connection', socket => {
     io.emit('playerLeft', { id: socket.id });
   });
 });
+
+// spawn initial NPC wave and schedule periodic spawns
+spawnMonstersAndBoss();
+setInterval(spawnMonstersAndBoss, NPC_SPAWN_INTERVAL);
 
 setInterval(() => {
   const now = Date.now();

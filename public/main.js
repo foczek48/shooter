@@ -124,6 +124,7 @@ socket.on('state', payload => {
   state.powerCubes = payload.powerCubes || [];
   state.walls = payload.walls || [];
   state.pickup = payload.pickup || null;
+  state.npcs = payload.npcs || [];
   occupancyEl.textContent = `${payload.playerCount}/${payload.maxPlayers} players`;
 });
 
@@ -247,6 +248,40 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.fillText(label, state.pickup.x, state.pickup.y + 6);
   }
+
+  // draw NPCs
+  (state.npcs || []).forEach(npc => {
+    const isBoss = npc.type === 'boss';
+    const radius = isBoss ? 26 : 16;
+    // health bar
+    const barWidth = isBoss ? 50 : 36;
+    const barHeight = 6;
+    const barX = npc.x - barWidth / 2;
+    const barY = npc.y - radius - 18;
+    ctx.fillStyle = '#111';
+    ctx.fillRect(barX, barY, barWidth, barHeight);
+    ctx.fillStyle = '#ef4444';
+    const healthPct = Math.max(0, Math.min(1, (npc.health || 0) / (isBoss ?  (150*4) : 150)));
+    ctx.fillRect(barX, barY, barWidth * healthPct, barHeight);
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(barX, barY, barWidth, barHeight);
+
+    // name
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(isBoss ? 'Boss' : 'Monster', npc.x, npc.y - radius - 26);
+
+    // body
+    ctx.fillStyle = isBoss ? '#ef4444' : '#6b7280';
+    ctx.beginPath();
+    ctx.arc(npc.x, npc.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  });
 
   state.players.forEach(player => {
     const barWidth = 36;
