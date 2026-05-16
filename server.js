@@ -170,11 +170,13 @@ function respawnPlayer(player) {
 }
 
 function dropPowerCubes(player, time) {
-  const dropCount = Math.max(1, Math.ceil(player.powerCubes * 0.5));
-  const lost = Math.min(player.powerCubes, dropCount);
-  player.powerCubes -= lost;
-  player.maxHealth = Math.max(100, player.maxHealth - lost * 15);
-  player.damageMultiplier = Math.max(1, player.damageMultiplier - lost * 0.1);
+  const totalCubes = player.powerCubes;
+  if (totalCubes <= 0) return;
+
+  const dropCount = Math.max(1, Math.floor(totalCubes * 0.5));
+  player.powerCubes = 0;
+  player.maxHealth = Math.max(100, player.maxHealth - totalCubes * 15);
+  player.damageMultiplier = Math.max(1, player.damageMultiplier - totalCubes * 0.1);
   player.health = Math.min(player.health, player.maxHealth);
 
   for (let c = 0; c < dropCount; c++) {
@@ -206,6 +208,20 @@ function spawnNPC(type = 'monster', x = null, y = null) {
   npcs.push(npc);
   emitEventLog(type === 'boss' ? `Boss spawned` : `Monster spawned`);
   return npc;
+}
+
+function dropNpcCubes(npc, time) {
+  const dropCount = npc.type === 'boss' ? 50 : 1 + Math.floor(Math.random() * 5);
+  for (let c = 0; c < dropCount; c++) {
+    const angle = (Math.PI * 2 * c) / dropCount;
+    powerCubes.push({
+      x: npc.x + Math.cos(angle) * 30,
+      y: npc.y + Math.sin(angle) * 30,
+      vx: Math.cos(angle) * 150,
+      vy: Math.sin(angle) * 150,
+      created: time
+    });
+  }
 }
 
 function spawnMonstersAndBoss() {
@@ -429,6 +445,7 @@ function update(dt) {
             npc.health -= damage;
             if (npc.health <= 0) {
               emitEventLog(`${npc.type === 'boss' ? 'Boss' : 'Monster'} defeated`);
+              dropNpcCubes(npc, time);
               npcs.splice(ni, 1);
             }
           }
@@ -474,6 +491,7 @@ function update(dt) {
         bullets.splice(i, 1);
         if (npc.health <= 0) {
           emitEventLog(`${npc.type === 'boss' ? 'Boss' : 'Monster'} defeated`);
+          dropNpcCubes(npc, time);
           // remove npc
           npcs.splice(ni, 1);
         }
