@@ -14,6 +14,8 @@ const BROADCAST_RATE = 1000 / 20;
 const PLAYER_SPEED = 240;
 const BULLET_SPEED = 600;
 const BULLET_LIFETIME = 1800;
+const WORLD_WIDTH = 800;
+const WORLD_HEIGHT = 600;
 
 app.use(express.static('public'));
 
@@ -48,6 +50,46 @@ function circleRectOverlap(cx, cy, radius, rect) {
   const dx = cx - closestX;
   const dy = cy - closestY;
   return dx * dx + dy * dy <= radius * radius;
+}
+
+function reflectCircleVelocityFromRect(body, rect, radius) {
+  const closestX = clamp(body.x, rect.x, rect.x + rect.width);
+  const closestY = clamp(body.y, rect.y, rect.y + rect.height);
+  const dx = body.x - closestX;
+  const dy = body.y - closestY;
+  if (Math.abs(dx) > Math.abs(dy)) {
+    if (dx === 0) {
+      body.vx = -body.vx;
+    } else {
+      body.vx = -body.vx;
+      body.x = closestX + Math.sign(dx) * (radius + 1);
+    }
+  } else {
+    if (dy === 0) {
+      body.vy = -body.vy;
+    } else {
+      body.vy = -body.vy;
+      body.y = closestY + Math.sign(dy) * (radius + 1);
+    }
+  }
+}
+
+function bounceFromBounds(body, radius, damping = 1) {
+  if (body.x - radius < 0) {
+    body.x = radius;
+    body.vx = -body.vx * damping;
+  } else if (body.x + radius > WORLD_WIDTH) {
+    body.x = WORLD_WIDTH - radius;
+    body.vx = -body.vx * damping;
+  }
+
+  if (body.y - radius < 0) {
+    body.y = radius;
+    body.vy = -body.vy * damping;
+  } else if (body.y + radius > WORLD_HEIGHT) {
+    body.y = WORLD_HEIGHT - radius;
+    body.vy = -body.vy * damping;
+  }
 }
 
 function canMoveTo(x, y) {
@@ -222,25 +264,31 @@ function update(dt) {
     spawnPickup();
   }
 
+  const getBulletRadius = (bullet) => {
+    if (bullet.type === 'bazooka') return 10;
+    if (bullet.type === 'sniper') return 5 + Math.min(10, bullet.distance * 0.03);
+    if (bullet.type === 'tnt') return 8;
+    return 5;
+  };
+
   for (let i = bullets.length - 1; i >= 0; i--) {
     const bullet = bullets[i];
     bullet.x += bullet.vx * dt;
     bullet.y += bullet.vy * dt;
     bullet.distance = Math.sqrt((bullet.x - bullet.startX) * (bullet.x - bullet.startX) + (bullet.y - bullet.startY) * (bullet.y - bullet.startY));
 
-    if (Date.now() - bullet.created > BULLET_LIFETIME || bullet.x < -50 || bullet.x > 850 || bullet.y < -50 || bullet.y > 650) {
+    const bulletRadius = getBulletRadius(bullet);
+    if (Date.now() - bullet.created > BULLET_LIFETIME) {
       bullets.splice(i, 1);
       continue;
     }
 
-    const getBulletRadius = (bullet) => {
-      if (bullet.type === 'bazooka') return 10;
-      if (bullet.type === 'sniper') return 5 + Math.min(10, bullet.distance * 0.03);
-      if (bullet.type === 'tnt') return 8;
-      return 5;
-    };
-
-    const bulletRadius = getBulletRadius(bullet);
+    if (bullet.type === 'bazooka') {
+      bounceFromBounds(bullet, bulletRadius, 0.9);
+    } else if (bullet.x < -50 || bullet.x > WORLD_WIDTH + 50 || bullet.y < -50 || bullet.y > WORLD_HEIGHT + 50) {
+      bullets.splice(i, 1);
+      continue;
+    }
 
     if (bullet.type === 'tnt' && bullet.explodeAt && time >= bullet.explodeAt) {
       const explosionRadius = 80;
@@ -272,7 +320,10 @@ function update(dt) {
     let hit = false;
     for (const wall of walls) {
       if (circleRectOverlap(bullet.x, bullet.y, bulletRadius, wall)) {
-        if (bullet.type === 'tnt') {
+        if (bullet.type === 'bazooka') {
+          reflectCircleVelocityFromRect(bullet, wall, bulletRadius);
+          hit = false;
+        } else if (bullet.type === 'tnt') {
           bullet.vx = 0;
           bullet.vy = 0;
         } else {
@@ -325,6 +376,16 @@ function update(dt) {
     cube.y += cube.vy * dt;
     cube.vx *= 0.98;
     cube.vy *= 0.98;
+    if (circleRectOverlap(cube.x, cube.y, 8, { x: 0, y: 0, width: WORLD_WIDTH, height: WORLD_HEIGHT })) {
+      // inside bounds
+    } else {
+      bounceFromBounds(cube, 8, 0.8);
+    }
+    for (const wall of walls) {
+      if (circleRectOverlap(cube.x, cube.y, 8, wall)) {
+        reflectCircleVelocityFromRect(cube, wall, 8);
+      }
+    }
     if (time - cube.created > 30000) {
       powerCubes.splice(i, 1);
     }
