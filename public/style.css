@@ -77,6 +77,37 @@ body {
   font-size: 13px;
 }
 
+.name-control {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  justify-content: flex-end;
+}
+
+.name-control input,
+.name-control button {
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 14px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f8fafc;
+}
+
+.name-control input {
+  min-width: 140px;
+}
+
+.name-control button {
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.name-control button:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: translateY(-1px);
+}
+
 .emotes {
   display: flex;
   flex-wrap: wrap;

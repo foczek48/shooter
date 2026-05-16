@@ -23,10 +23,30 @@ function sendEmote(emoji, logText) {
   }
 }
 
+function setName(name) {
+  socket.emit('setName', { name });
+  statusEl.textContent = `Name set to ${name}`;
+}
+
 const emoteButtons = document.querySelectorAll('.emote-button');
 emoteButtons.forEach(button => {
   button.addEventListener('click', () => sendEmote(button.dataset.emote, button.dataset.logData));
 });
+
+const nameInput = document.getElementById('nameInput');
+const setNameButton = document.getElementById('setNameButton');
+if (setNameButton && nameInput) {
+  setNameButton.addEventListener('click', () => {
+    const name = nameInput.value.trim();
+    if (name) setName(name);
+  });
+  nameInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      const name = nameInput.value.trim();
+      if (name) setName(name);
+    }
+  });
+}
 
 function resizeCanvas() {
   const ratio = window.devicePixelRatio || 1;
@@ -107,8 +127,10 @@ socket.on('state', payload => {
   occupancyEl.textContent = `${payload.playerCount}/${payload.maxPlayers} players`;
 });
 
-socket.on('eventLog', payload => {
-  if (payload && payload.message) addEventLog(payload.message);
+socket.on('playerNameChanged', payload => {
+  if (payload && payload.id && payload.name) {
+    addEventLog(`Player changed name to ${payload.name}`);
+  }
 });
 
 socket.on('playerJoined', payload => {
@@ -240,12 +262,28 @@ function draw() {
     ctx.lineWidth = 1;
     ctx.strokeRect(barX, barY, barWidth, barHeight);
 
+    const nameY = player.y - 58;
+    const cubeY = player.y - 42;
+    const emoteY = player.y - 78;
+
+    if (player.emote) {
+      ctx.fillStyle = '#fff';
+      ctx.font = '24px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(player.emote, player.x, emoteY);
+    }
+
     if (player.powerCubes > 0) {
       ctx.fillStyle = '#fbbf24';
       ctx.font = 'bold 12px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(player.powerCubes, player.x, player.y - 42);
+      ctx.fillText(player.powerCubes, player.x, cubeY);
     }
+
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(player.name, player.x, nameY);
 
     ctx.fillStyle = player.color;
     ctx.beginPath();
@@ -254,15 +292,6 @@ function draw() {
     ctx.strokeStyle = '#000';
     ctx.lineWidth = 2;
     ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = '14px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(player.name, player.x, player.y - 48);
-
-    if (player.emote) {
-      ctx.font = '24px sans-serif';
-      ctx.fillText(player.emote, player.x, player.y - 70);
-    }
 
     if (player.id === localId) {
       ctx.strokeStyle = '#fff';

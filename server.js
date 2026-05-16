@@ -240,6 +240,19 @@ function update(dt) {
       }
     }
 
+    for (let j = powerCubes.length - 1; j >= 0; j--) {
+      const cube = powerCubes[j];
+      const dxCube = player.x - cube.x;
+      const dyCube = player.y - cube.y;
+      if (dxCube * dxCube + dyCube * dyCube < (18 + 8) * (18 + 8)) {
+        player.maxHealth += 15;
+        player.health = Math.min(player.health + 15, player.maxHealth);
+        player.damageMultiplier += 0.1;
+        player.powerCubes += 1;
+        powerCubes.splice(j, 1);
+      }
+    }
+
     if (player.input.shoot && time - player.lastShot > 200) {
       const angle = Math.atan2(player.input.aimY - player.y, player.input.aimX - player.x);
       const type = player.powerup ? player.powerup.type : 'normal';
@@ -446,6 +459,17 @@ io.on('connection', socket => {
   socket.on('input', data => {
     if (!players[socket.id]) return;
     players[socket.id].input = Object.assign(players[socket.id].input, data);
+  });
+
+  socket.on('setName', payload => {
+    const player = players[socket.id];
+    if (!player || !payload || typeof payload.name !== 'string') return;
+    const name = payload.name.trim().slice(0, 16);
+    if (!name) return;
+    const oldName = player.name;
+    player.name = name;
+    emitEventLog(`Player ${oldName} changed name to ${name}`);
+    io.emit('playerNameChanged', { id: socket.id, name });
   });
 
   socket.on('setEmote', payload => {

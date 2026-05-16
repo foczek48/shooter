@@ -13,6 +13,10 @@
       <div id="status">Connecting...</div>
       <div id="serverStatus">Connecting...</div>
       <div id="occupancy">0/0 players</div>
+      <div class="name-control">
+        <input id="nameInput" type="text" placeholder="Enter name" maxlength="16" />
+        <button id="setNameButton">Set name</button>
+      </div>
     </div>
   </div>
   <canvas id="gameCanvas" width="800" height="600"></canvas>
@@ -27,7 +31,7 @@
       <button class="emote-button" data-emote="🔥" data-log-data="is on fire">🔥</button>
     </div>
   </div>
-  <div class="footer">v0.8.1 beta</div>
+  <div class="footer">v0.8.2 beta</div>
   <script src="/socket.io/socket.io.js"></script>
   <script src="main.js"></script>
 </body>
