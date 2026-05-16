@@ -1,6 +1,6 @@
 # Shooter 2D
 
-Simple starter pack for a 2D multiplayer shooter using Node.js + Socket.IO.
+Simple 2D multiplayer shooter using Node.js + Socket.IO.
 
 ## Project contents
 
@@ -40,5 +40,3 @@ Simple starter pack for a 2D multiplayer shooter using Node.js + Socket.IO.
 ## License
 **MIT License**  
 See LICENSE file for details.
-
-v0.5.1 alpha

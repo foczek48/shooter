@@ -26,7 +26,7 @@ const bullets = [];
 const powerCubes = [];
 const npcs = [];
 let nextNpcId = 1;
-const NPC_SPAWN_INTERVAL = 60000; // 1 minute
+const NPC_SPAWN_INTERVAL = 120000; // 2 minutes
 const NPC_BOSS_LIFETIME = 60000 * 2; // boss lives 2 minutes unless killed
 const NPC_HEALTH = 150;
 const explosions = [];
@@ -413,13 +413,13 @@ function update(dt) {
 
     if (bullet.type === 'tnt' && bullet.explodeAt && time >= bullet.explodeAt) {
       const explosionRadius = 80;
+      const shooter = players[bullet.shooter];
       explosions.push({ x: bullet.x, y: bullet.y, radius: explosionRadius, created: time });
         for (const player of Object.values(players)) {
         if (player.id === bullet.shooter) continue;
         const dx = bullet.x - player.x;
         const dy = bullet.y - player.y;
         if (dx * dx + dy * dy <= explosionRadius * explosionRadius) {
-          const shooter = players[bullet.shooter];
           let damage = 80;
           if (shooter) {
             damage = Math.ceil(damage * shooter.damageMultiplier);
@@ -441,7 +441,11 @@ function update(dt) {
           const dy = bullet.y - npc.y;
           if (dx * dx + dy * dy <= explosionRadius * explosionRadius) {
             let damage = 80;
-            if (bullet.npcMultiplier) damage = Math.ceil(damage * bullet.npcMultiplier);
+            if (bullet.npcMultiplier) {
+              damage = Math.ceil(damage * bullet.npcMultiplier);
+            } else if (shooter) {
+              damage = Math.ceil(damage * shooter.damageMultiplier);
+            }
             npc.health -= damage;
             if (npc.health <= 0) {
               emitEventLog(`${npc.type === 'boss' ? 'Boss' : 'Monster'} defeated`);
@@ -486,7 +490,14 @@ function update(dt) {
         let damage = 25;
         if (bullet.type === 'bazooka') damage = 45;
         else if (bullet.type === 'sniper') damage = 15 + Math.min(35, bullet.distance * 0.2);
-        if (bullet.npcMultiplier) damage = Math.ceil(damage * bullet.npcMultiplier);
+        if (bullet.npcMultiplier) {
+          damage = Math.ceil(damage * bullet.npcMultiplier);
+        } else {
+          const shooter = players[bullet.shooter];
+          if (shooter) {
+            damage = Math.ceil(damage * shooter.damageMultiplier);
+          }
+        }
         npc.health -= damage;
         bullets.splice(i, 1);
         if (npc.health <= 0) {
